@@ -4,7 +4,7 @@ import { formatTanggal, getTodayString } from '../data/mockData';
 
 const titleMap = {
   '/admin/dashboard': { title: 'Dashboard', desc: 'Ringkasan data kehadiran hari ini' },
-  '/admin/data-guru': { title: 'Data Guru', desc: 'Kelola data guru SDN 064956 Medan' },
+  '/admin/data-guru': { title: 'Data Guru', desc: 'Kelola data guru SDN 064958 Medan' },
   '/admin/data-user': { title: 'Data User', desc: 'Kelola akun pengguna sistem' },
   '/admin/jadwal': { title: 'Jadwal Guru', desc: 'Manajemen jadwal mengajar' },
   '/admin/kehadiran': { title: 'Data Kehadiran', desc: 'Rekap kehadiran semua guru' },
@@ -28,7 +28,7 @@ export default function Topbar() {
       </div>
       <div className="topbar-right">
         <span className="topbar-date">
-          📅 {formatTanggal(getTodayString())}
+            {formatTanggal(getTodayString())}
         </span>
       </div>
     </header>

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MdPrint, MdFilterList } from 'react-icons/md';
-import { mockLaporan } from '../../data/mockData';
+import { db } from '../../firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 const BULAN = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -10,10 +11,96 @@ const BULAN = [
 export default function LaporanKehadiran() {
   const [bulan, setBulan] = useState(8); // September (0-indexed)
   const [tahun, setTahun] = useState(2024);
+  const [guruList, setGuruList] = useState([]);
+  const [kehadiranList, setKehadiranList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const total_hadir = mockLaporan.reduce((a, r) => a + r.hadir, 0);
-  const total_sakit = mockLaporan.reduce((a, r) => a + r.sakit, 0);
-  const total_izin = mockLaporan.reduce((a, r) => a + r.izin, 0);
+  // Ambil data Guru dan Kehadiran dari Firestore
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+
+        // 1. Ambil daftar master guru
+        const guruSnapshot = await getDocs(collection(db, 'guru'));
+        const guruData = guruSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setGuruList(guruData);
+
+        // 2. Ambil data kehadiran dari Firestore
+        const kehadiranSnapshot = await getDocs(collection(db, 'kehadiran'));
+        const kehadiranData = kehadiranSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setKehadiranList(kehadiranData);
+
+      } catch (error) {
+        console.error("Gagal memuat data laporan:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Proses rekapitulasi data berdasarkan guru dan filter bulan/tahun yang dipilih
+  const laporanRekap = useMemo(() => {
+    return guruList.map(guru => {
+      // Filter data kehadiran berdasarkan guru ini serta bulan dan tahun yang dipilih
+      const filterPresensi = kehadiranList.filter(k => {
+        if (k.guru_id !== guru.id && k.guru_nama !== guru.nama) return false;
+
+        // Asumsi format tanggal tersimpan di k.tanggal (misal string "YYYY-MM-DD" atau objek Timestamp)
+        let tanggalObj;
+        if (k.tanggal?.toDate) {
+          tanggalObj = k.tanggal.toDate();
+        } else if (typeof k.tanggal === 'string') {
+          tanggalObj = new Date(k.tanggal);
+        } else {
+          return false;
+        }
+
+        return (
+          tanggalObj.getMonth() === bulan &&
+          tanggalObj.getFullYear() === tahun
+        );
+      });
+
+      // Hitung akumulasi status kehadiran
+      let hadir = 0;
+      let sakit = 0;
+      let izin = 0;
+      let alpha = 0;
+
+      filterPresensi.forEach(item => {
+        const status = (item.status || '').toLowerCase();
+        if (status === 'hadir') hadir++;
+        else if (status === 'sakit') sakit++;
+        else if (status === 'izin') izin++;
+        else if (status === 'alpha' || status === 'alfa') alpha++;
+      });
+
+      const total = hadir + sakit + izin + alpha;
+
+      return {
+        guru_nama: guru.nama || 'Tanpa Nama',
+        nip: guru.nip || '-',
+        hadir,
+        sakit,
+        izin,
+        alpha,
+        total: total === 0 ? 0 : total
+      };
+    });
+  }, [guruList, kehadiranList, bulan, tahun]);
+
+  const total_hadir = laporanRekap.reduce((a, r) => a + r.hadir, 0);
+  const total_sakit = laporanRekap.reduce((a, r) => a + r.sakit, 0);
+  const total_izin = laporanRekap.reduce((a, r) => a + r.izin, 0);
 
   const handlePrint = () => window.print();
 
@@ -21,7 +108,7 @@ export default function LaporanKehadiran() {
     <div>
       <div className="page-header">
         <div className="page-header-left">
-          <h2>📈 Laporan Kehadiran Guru</h2>
+          <h2>📊 Laporan Kehadiran Guru</h2>
           <p>Rekap bulanan kehadiran seluruh guru</p>
         </div>
         <button className="btn btn-primary" onClick={handlePrint} id="btn-cetak-laporan">
@@ -41,7 +128,7 @@ export default function LaporanKehadiran() {
           <div className="form-group" style={{ flex: '0 0 120px' }}>
             <label className="form-label">Tahun</label>
             <select className="form-control" value={tahun} onChange={e => setTahun(+e.target.value)}>
-              {[2023, 2024, 2025].map(y => <option key={y} value={y}>{y}</option>)}
+              {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div style={{ paddingBottom: '2px' }}>
@@ -54,7 +141,7 @@ export default function LaporanKehadiran() {
               borderRadius: 'var(--radius-sm)',
               display: 'inline-block',
             }}>
-              📅 Periode: <strong>{BULAN[bulan]} {tahun}</strong>
+              Periode: <strong>{BULAN[bulan]} {tahun}</strong>
             </span>
           </div>
         </div>
@@ -88,8 +175,8 @@ export default function LaporanKehadiran() {
       {/* Tabel Laporan */}
       <div className="card">
         <div className="section-header">
-          <h3>📊 Rekap Kehadiran — {BULAN[bulan]} {tahun}</h3>
-          <span className="section-header-badge">{mockLaporan.length} guru</span>
+          <h3>Rekap Kehadiran — {BULAN[bulan]} {tahun}</h3>
+          <span className="section-header-badge">{laporanRekap.length} guru</span>
         </div>
         <div className="table-container">
           <table>
@@ -107,53 +194,63 @@ export default function LaporanKehadiran() {
               </tr>
             </thead>
             <tbody>
-              {mockLaporan.map((r, i) => {
-                const pct = Math.round((r.hadir / r.total) * 100);
-                return (
-                  <tr key={i}>
-                    <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.guru_nama}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {r.nip}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span style={{ color: 'var(--accent-green)', fontWeight: 700 }}>{r.hadir}</span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span style={{ color: r.sakit > 0 ? 'var(--accent-orange)' : 'var(--text-muted)', fontWeight: 600 }}>
-                        {r.sakit}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span style={{ color: r.izin > 0 ? 'var(--accent-purple)' : 'var(--text-muted)', fontWeight: 600 }}>
-                        {r.izin}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span style={{ color: r.alpha > 0 ? 'var(--accent-red)' : 'var(--text-muted)', fontWeight: 600 }}>
-                        {r.alpha}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.total}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', align: 'center', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{
-                          fontWeight: 700,
-                          color: pct >= 90 ? 'var(--accent-green)' : pct >= 75 ? 'var(--accent-orange)' : 'var(--accent-red)'
-                        }}>
-                          {pct}%
+              {loading ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '24px' }}>Memuat rekap laporan dari database...</td>
+                </tr>
+              ) : laporanRekap.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '24px' }}>Tidak ada data guru yang tersedia.</td>
+                </tr>
+              ) : (
+                laporanRekap.map((r, i) => {
+                  const pct = r.total > 0 ? Math.round((r.hadir / r.total) * 100) : 0;
+                  return (
+                    <tr key={i}>
+                      <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.guru_nama}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {r.nip}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ color: 'var(--accent-green)', fontWeight: 700 }}>{r.hadir}</span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ color: r.sakit > 0 ? 'var(--accent-orange)' : 'var(--text-muted)', fontWeight: 600 }}>
+                          {r.sakit}
                         </span>
-                        <div className="progress-bar" style={{ width: '60px', margin: '0 auto' }}>
-                          <div className="progress-fill" style={{
-                            width: `${pct}%`,
-                            background: pct >= 90 ? 'var(--accent-green)' : pct >= 75 ? 'var(--accent-orange)' : 'var(--accent-red)',
-                          }} />
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ color: r.izin > 0 ? 'var(--accent-purple)' : 'var(--text-muted)', fontWeight: 600 }}>
+                          {r.izin}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ color: r.alpha > 0 ? 'var(--accent-red)' : 'var(--text-muted)', fontWeight: 600 }}>
+                          {r.alpha}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.total}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{
+                            fontWeight: 700,
+                            color: pct >= 90 ? 'var(--accent-green)' : pct >= 75 ? 'var(--accent-orange)' : 'var(--accent-red)'
+                          }}>
+                            {pct}%
+                          </span>
+                          <div className="progress-bar" style={{ width: '60px', margin: '0 auto' }}>
+                            <div className="progress-fill" style={{
+                              width: `${pct}%`,
+                              background: pct >= 90 ? 'var(--accent-green)' : pct >= 75 ? 'var(--accent-orange)' : 'var(--accent-red)',
+                            }} />
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
             {/* Footer Total */}
             <tfoot>

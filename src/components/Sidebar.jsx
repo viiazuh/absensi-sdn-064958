@@ -6,6 +6,7 @@ import {
 } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
 import { getInitials } from '../data/mockData';
+import LogoSekolah from '../assets/LogoSekolah.jpeg';
 
 const adminMenus = [
   { label: 'Dashboard', icon: <MdDashboard />, to: '/admin/dashboard' },
@@ -38,9 +39,11 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-inner">
-          <div className="sidebar-logo-icon">🏫</div>
+          <div className="sidebar-logo-icon">
+            <img src={LogoSekolah} alt='LogoSekolah'></img>
+          </div>
           <div className="sidebar-logo-text">
-            <h4>SDN 064956 MEDAN</h4>
+            <h4>SDN 064958 MEDAN</h4>
             <span>Sistem Absensi Digital</span>
           </div>
         </div>
@@ -76,7 +79,7 @@ export default function Sidebar() {
           </div>
           <div className="sidebar-user-info">
             <h5>{user?.nama || 'User'}</h5>
-            <span>{user?.role === 'admin' ? '⚡ Admin' : '👨‍🏫 Guru'}</span>
+            <span>{user?.role === 'admin' ? 'Admin' : 'Guru'}</span>
           </div>
         </div>
         <button className="sidebar-link btn-danger" onClick={handleLogout} style={{ width: '100%' }}>
@@ -86,4 +89,4 @@ export default function Sidebar() {
       </div>
     </aside>
   );
-}
+};

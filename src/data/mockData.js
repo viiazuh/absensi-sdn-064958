@@ -4,7 +4,7 @@
 export const mockUser = {
   id: '1',
   nama: 'Admin Sekolah',
-  email: 'admin@sdn064956.sch.id',
+  email: 'admin@sdn064958.sch.id',
   role: 'admin',
   foto: null,
 };
@@ -12,7 +12,7 @@ export const mockUser = {
 export const mockGuruUser = {
   id: '2',
   nama: 'Budi Santoso',
-  email: 'budi@sdn064956.sch.id',
+  email: 'budi@sdn064958.sch.id',
   role: 'guru',
   foto: null,
 };
@@ -69,7 +69,7 @@ export const mockUsers = [
   {
     id: 'u1',
     nama: 'Admin Sekolah',
-    email: 'admin@sdn064956.sch.id',
+    email: 'admin@sdn064958.sch.id',
     role: 'admin',
     status: 'Aktif',
     createdAt: '2024-01-01',
@@ -77,7 +77,7 @@ export const mockUsers = [
   {
     id: 'u2',
     nama: 'Siti Ahmad',
-    email: 'siti@sdn064956.sch.id',
+    email: 'siti@sdn064958.sch.id',
     role: 'guru',
     status: 'Aktif',
     createdAt: '2024-01-05',
@@ -85,7 +85,7 @@ export const mockUsers = [
   {
     id: 'u3',
     nama: 'Budi Santoso',
-    email: 'budi@sdn064956.sch.id',
+    email: 'budi@sdn064958.sch.id',
     role: 'guru',
     status: 'Aktif',
     createdAt: '2024-01-05',
@@ -93,7 +93,7 @@ export const mockUsers = [
   {
     id: 'u4',
     nama: 'Andi Saputra',
-    email: 'andi@sdn064956.sch.id',
+    email: 'andi@sdn064958.sch.id',
     role: 'guru',
     status: 'Aktif',
     createdAt: '2024-01-05',
@@ -101,7 +101,7 @@ export const mockUsers = [
   {
     id: 'u5',
     nama: 'Dewi Rahayu',
-    email: 'dewi@sdn064956.sch.id',
+    email: 'dewi@sdn064958.sch.id',
     role: 'guru',
     status: 'Aktif',
     createdAt: '2024-01-10',

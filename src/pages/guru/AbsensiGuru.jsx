@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { MdCheckCircle, MdSick, MdEventBusy, MdAccessTime } from 'react-icons/md';
+import { MdAccessTime } from 'react-icons/md';
 import { formatTanggal, getTodayString, getNowTime } from '../../data/mockData';
 import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function AbsensiGuru() {
   const { user } = useAuth();
@@ -14,13 +16,38 @@ export default function AbsensiGuru() {
   });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   const handleAbsen = async () => {
+    // Validasi keterangan wajib jika tidak Hadir (Sakit / Izin)
+    if (form.status !== 'Hadir' && !form.keterangan.trim()) {
+      setErrorMsg(`Keterangan wajib diisi untuk status ${form.status}!`);
+      return;
+    }
+
+    setErrorMsg(null);
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1000));
-    setLoading(false);
-    setSubmitted(true);
-    // TODO: Simpan ke Supabase
+
+    try {
+      // Simpan data absensi ke koleksi 'kehadiran' di Firestore
+      await addDoc(collection(db, 'kehadiran'), {
+        guru_id: user?.uid || user?.id || 'unknown_id',
+        guru_nama: user?.nama || 'Guru',
+        nip: user?.nip || '-',
+        tanggal: form.tanggal,
+        jam_masuk: form.status === 'Hadir' ? form.jam_masuk : '—',
+        status: form.status,
+        keterangan: form.keterangan || '-',
+        created_at: serverTimestamp()
+      });
+
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Gagal menyimpan absensi ke Firestore:", error);
+      setErrorMsg('Gagal menyimpan absensi ke database. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (submitted) {
@@ -60,7 +87,7 @@ export default function AbsensiGuru() {
             </div>
             <div>
               <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Jam Masuk</p>
-              <p style={{ fontWeight: '700', color: 'var(--accent-blue)' }}>{form.jam_masuk || '—'}</p>
+              <p style={{ fontWeight: '700', color: 'var(--accent-blue)' }}>{form.status === 'Hadir' ? form.jam_masuk : '—'}</p>
             </div>
             {form.keterangan && (
               <div style={{ gridColumn: '1/-1' }}>
@@ -70,7 +97,7 @@ export default function AbsensiGuru() {
             )}
           </div>
 
-          <button className="btn btn-secondary" onClick={() => setSubmitted(false)}>
+          <button className="btn btn-secondary" onClick={() => { setSubmitted(false); setForm(f => ({ ...f, keterangan: '' })); }}>
             Kembali
           </button>
         </div>
@@ -85,6 +112,20 @@ export default function AbsensiGuru() {
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '24px' }}>
           {formatTanggal(today)}
         </p>
+
+        {errorMsg && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#ef4444',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.82rem',
+            marginBottom: '16px'
+          }}>
+            {errorMsg}
+          </div>
+        )}
 
         {/* Status Selection */}
         <div className="form-group" style={{ marginBottom: '20px' }}>
@@ -132,7 +173,7 @@ export default function AbsensiGuru() {
         {/* Keterangan */}
         <div className="form-group" style={{ marginBottom: '24px' }}>
           <label className="form-label">
-            Keterangan {form.status !== 'Hadir' && '(wajib diisi)'}
+            Keterangan {form.status !== 'Hadir' && <span style={{ color: '#ef4444' }}>(wajib diisi)</span>}
           </label>
           <textarea
             className="form-control"
@@ -141,8 +182,8 @@ export default function AbsensiGuru() {
               form.status === 'Hadir'
                 ? 'Catatan tambahan (opsional)...'
                 : form.status === 'Sakit'
-                ? 'Jelaskan kondisi kesehatan...'
-                : 'Alasan izin tidak masuk...'
+                  ? 'Jelaskan kondisi kesehatan...'
+                  : 'Alasan izin tidak masuk...'
             }
             value={form.keterangan}
             onChange={e => setForm(f => ({ ...f, keterangan: e.target.value }))}
@@ -160,7 +201,7 @@ export default function AbsensiGuru() {
           fontSize: '0.8rem',
           color: 'var(--text-secondary)',
         }}>
-          👨‍🏫 Guru: <strong style={{ color: 'var(--text-primary)' }}>{user?.nama}</strong>
+          Guru: <strong style={{ color: 'var(--text-primary)' }}>{user?.nama || 'Pengguna'}</strong>
         </div>
 
         <button
@@ -170,7 +211,7 @@ export default function AbsensiGuru() {
           onClick={handleAbsen}
           disabled={loading}
         >
-          {loading ? '⟳ Menyimpan...' : '✅ Absen Masuk'}
+          {loading ? '⟳ Menyimpan ke Database...' : '✅ Absen Masuk'}
         </button>
       </div>
     </div>

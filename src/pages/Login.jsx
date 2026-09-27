@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MdEmail, MdLock, MdVisibility, MdVisibilityOff } from 'react-icons/md';
 import { useAuth } from '../context/AuthContext';
+import LogoSekolah from '../assets/LogoSekolah.jpeg';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -22,11 +23,6 @@ export default function Login() {
     }
   };
 
-  const fillDemo = (role) => {
-    if (role === 'admin') { setEmail('admin@sdn.id'); setPassword('admin123'); }
-    else { setEmail('guru@sdn.id'); setPassword('guru123'); }
-  };
-
   return (
     <div className="login-page">
       {/* Background Orbs */}
@@ -39,8 +35,10 @@ export default function Login() {
       <div className="login-card">
         {/* Logo */}
         <div className="login-logo">
-          <div className="login-logo-icon">🏫</div>
-          <h1>SD NEGERI 064956<br />MEDAN</h1>
+          <div className="login-logo-icon">
+            <img src={LogoSekolah} alt='LogoSekolah'></img>
+          </div>
+          <h1>SD NEGERI 064958<br />MEDAN</h1>
           <p>Aplikasi Kehadiran Guru Berbasis Web</p>
         </div>
 
@@ -118,38 +116,6 @@ export default function Login() {
             {loading ? '⟳ Masuk...' : '🔐 Masuk'}
           </button>
         </form>
-
-        {/* Demo Credentials */}
-        <div style={{
-          marginTop: '20px',
-          padding: '14px',
-          background: 'rgba(79,142,247,0.06)',
-          border: '1px solid rgba(79,142,247,0.15)',
-          borderRadius: 'var(--radius-sm)',
-        }}>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>
-            🧪 DEMO AKUN (klik untuk isi otomatis)
-          </p>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => fillDemo('admin')}
-              className="btn btn-secondary btn-sm"
-              style={{ flex: 1, fontSize: '0.72rem' }}
-            >
-              ⚡ Login Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => fillDemo('guru')}
-              className="btn btn-secondary btn-sm"
-              style={{ flex: 1, fontSize: '0.72rem' }}
-            >
-              👨‍🏫 Login Guru
-            </button>
-          </div>
-        </div>
-
         <div className="login-footer">
           © SDN 064958 Medan — Sistem Absensi Digital
         </div>

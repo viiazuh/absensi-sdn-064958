@@ -1,11 +1,14 @@
-import { useState, useRef } from 'react';
-import { MdAdd, MdEdit, MdDelete, MdSearch, MdClose, MdCloudUpload, MdPerson } from 'react-icons/md';
-import { mockGuru, getInitials } from '../../data/mockData';
+import { useState, useEffect, useRef } from 'react';
+import { MdAdd, MdEdit, MdDelete, MdSearch, MdClose, MdCloudUpload } from 'react-icons/md';
+import { getInitials } from '../../data/mockData';
+import { db } from '../../firebase';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
-const emptyForm = { nip: '', nama: '', mata_pelajaran: '', kelas: '', status: 'Aktif', foto_url: null };
+const emptyForm = { nip: '', nama: '', mata_pelajaran: '', kelas: '', jenis_kelamin: '', status: 'Aktif', foto_url: null };
 
 export default function DataGuru() {
-  const [guruList, setGuruList] = useState(mockGuru);
+  const [guruList, setGuruList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null); // null | 'tambah' | 'edit' | 'hapus'
   const [selected, setSelected] = useState(null);
@@ -14,10 +17,32 @@ export default function DataGuru() {
   const [toast, setToast] = useState(null);
   const fileRef = useRef();
 
+  // Ambil data guru dari Firestore saat komponen dimuat
+  const fetchGuru = async () => {
+    try {
+      setLoading(true);
+      const querySnapshot = await getDocs(query(collection(db, 'guru'), orderBy('nama', 'asc')));
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setGuruList(data);
+    } catch (error) {
+      console.error("Gagal mengambil data guru:", error);
+      showToast('Gagal memuat data guru', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGuru();
+  }, []);
+
   const filtered = guruList.filter(g =>
-    g.nama.toLowerCase().includes(search.toLowerCase()) ||
-    g.nip.includes(search) ||
-    g.mata_pelajaran.toLowerCase().includes(search.toLowerCase())
+    (g.nama?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (g.nip || '').includes(search) ||
+    (g.mata_pelajaran?.toLowerCase() || '').includes(search.toLowerCase())
   );
 
   const showToast = (msg, type = 'success') => {
@@ -51,25 +76,59 @@ export default function DataGuru() {
     const url = URL.createObjectURL(file);
     setFotoPreview(url);
     setForm(f => ({ ...f, foto_url: url }));
-    // TODO: Upload ke Cloudinary
+    // TODO: Upload ke Cloudinary atau Firebase Storage jika diperlukan
   };
 
-  const handleSave = () => {
-    if (!form.nip || !form.nama) return;
-    if (modal === 'tambah') {
-      setGuruList(prev => [...prev, { ...form, id: 'g' + Date.now() }]);
-      showToast('Data guru berhasil ditambahkan');
-    } else {
-      setGuruList(prev => prev.map(g => g.id === selected.id ? { ...g, ...form } : g));
-      showToast('Data guru berhasil diperbarui');
+  const handleSave = async () => {
+    if (!form.nip || !form.nama || !form.jenis_kelamin) {
+      showToast('NIP, Nama, dan Jenis Kelamin wajib diisi!', 'error');
+      return;
     }
-    closeModal();
+
+    try {
+      if (modal === 'tambah') {
+        // Simpan ke Firestore koleksi 'guru'
+        const docRef = await addDoc(collection(db, 'guru'), {
+          ...form,
+          created_at: new Date()
+        });
+        setGuruList(prev => [...prev, { ...form, id: docRef.id }]);
+        showToast('Data guru berhasil ditambahkan');
+      } else if (modal === 'edit' && selected) {
+        // Perbarui data di Firestore
+        const docRef = doc(db, 'guru', selected.id);
+        await updateDoc(docRef, {
+          nip: form.nip,
+          nama: form.nama,
+          mata_pelajaran: form.mata_pelajaran,
+          kelas: form.kelas,
+          jenis_kelamin: form.jenis_kelamin,
+          status: form.status,
+          foto_url: form.foto_url || null
+        });
+        setGuruList(prev => prev.map(g => g.id === selected.id ? { ...g, ...form } : g));
+        showToast('Data guru berhasil diperbarui');
+      }
+      closeModal();
+      fetchGuru(); // Refresh data agar sinkron
+    } catch (error) {
+      console.error("Gagal menyimpan data:", error);
+      showToast('Gagal menyimpan data ke database', 'error');
+    }
   };
 
-  const handleHapus = () => {
-    setGuruList(prev => prev.filter(g => g.id !== selected.id));
-    showToast('Data guru berhasil dihapus', 'error');
-    closeModal();
+  const handleHapus = async () => {
+    if (!selected) return;
+
+    try {
+      await deleteDoc(doc(db, 'guru', selected.id));
+      setGuruList(prev => prev.filter(g => g.id !== selected.id));
+      showToast('Data guru berhasil dihapus', 'error');
+      closeModal();
+    } catch (error) {
+      console.error("Gagal menghapus data:", error);
+      showToast('Gagal menghapus data dari database', 'error');
+    }
   };
 
   return (
@@ -126,7 +185,9 @@ export default function DataGuru() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '20px' }}>Memuat data...</td></tr>
+              ) : filtered.length === 0 ? (
                 <tr><td colSpan={7}>
                   <div className="empty-state">
                     <div className="empty-state-icon">🔍</div>
@@ -141,8 +202,8 @@ export default function DataGuru() {
                     <div className="guru-cell">
                       <div className="guru-avatar-sm">
                         {g.foto_url
-                          ? <img src={g.foto_url} alt={g.nama} />
-                          : getInitials(g.nama)
+                          ? <img src={g.foto_url} alt={g.nama} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                          : getInitials(g.nama || 'Guru')
                         }
                       </div>
                       <div className="guru-cell-info">
@@ -153,8 +214,8 @@ export default function DataGuru() {
                   <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', letterSpacing: '0.05em' }}>
                     {g.nip}
                   </td>
-                  <td>{g.mata_pelajaran}</td>
-                  <td>{g.kelas}</td>
+                  <td>{g.mata_pelajaran || '—'}</td>
+                  <td>{g.kelas || '—'}</td>
                   <td>
                     <span className={`badge ${g.status === 'Aktif' ? 'aktif' : 'nonaktif'}`}>
                       {g.status}
@@ -199,17 +260,17 @@ export default function DataGuru() {
               <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>
                 Foto Guru
               </label>
-              <div className="foto-upload-area" onClick={() => fileRef.current?.click()}>
+              <div className="foto-upload-area" onClick={() => fileRef.current?.click()} style={{ cursor: 'pointer', textAlign: 'center', border: '2px dashed var(--border-color)', padding: '15px', borderRadius: '8px' }}>
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFoto} style={{ display: 'none' }} />
                 {fotoPreview ? (
-                  <img src={fotoPreview} alt="preview" className="foto-preview" />
+                  <img src={fotoPreview} alt="preview" className="foto-preview" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '50%', margin: '0 auto 10px' }} />
                 ) : (
-                  <div className="foto-upload-icon"><MdCloudUpload /></div>
+                  <div className="foto-upload-icon" style={{ fontSize: '2rem' }}><MdCloudUpload /></div>
                 )}
                 <p className="foto-upload-text">
                   {fotoPreview ? 'Klik untuk ganti foto' : 'Klik untuk upload foto'}
                 </p>
-                <p className="foto-upload-hint">JPG, PNG, WebP • Maks 2MB • (Nanti via Cloudinary)</p>
+                <p className="foto-upload-hint" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>JPG, PNG, WebP • Maks 2MB</p>
               </div>
             </div>
 
@@ -234,13 +295,25 @@ export default function DataGuru() {
                 />
               </div>
               <div className="form-group">
+                <label className="form-label">Jenis Kelamin *</label>
+                <select
+                  className="form-control"
+                  value={form.jenis_kelamin}
+                  onChange={e => setForm(f => ({ ...f, jenis_kelamin: e.target.value }))}
+                >
+                  <option value="" disabled hidden>Pilih...</option>
+                  <option value="Laki-laki">Laki-laki</option>
+                  <option value="Perempuan">Perempuan</option>
+                </select>
+              </div>
+              <div className="form-group">
                 <label className="form-label">Mata Pelajaran</label>
                 <select
                   className="form-control"
                   value={form.mata_pelajaran}
                   onChange={e => setForm(f => ({ ...f, mata_pelajaran: e.target.value }))}
                 >
-                  <option value="">Pilih...</option>
+                  <option value="" disabled hidden>Pilih...</option>
                   {['Guru Kelas', 'Matematika', 'Bahasa Indonesia', 'IPA', 'IPS', 'PJOK', 'PAI', 'Bahasa Inggris', 'SBK'].map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
@@ -253,7 +326,7 @@ export default function DataGuru() {
                   value={form.kelas}
                   onChange={e => setForm(f => ({ ...f, kelas: e.target.value }))}
                 >
-                  <option value="">Pilih...</option>
+                  <option value="" disabled hidden>Pilih...</option>
                   {['Kelas I', 'Kelas II', 'Kelas III', 'Kelas IV', 'Kelas V', 'Kelas VI', 'Semua Kelas'].map(k => (
                     <option key={k} value={k}>{k}</option>
                   ))}
@@ -272,7 +345,7 @@ export default function DataGuru() {
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button className="btn btn-secondary" onClick={closeModal}>Batal</button>
               <button className="btn btn-primary" onClick={handleSave}>
                 {modal === 'tambah' ? 'Simpan' : 'Perbarui'}
@@ -297,7 +370,7 @@ export default function DataGuru() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0' }}>
               Tindakan ini tidak dapat dibatalkan.
             </p>
-            <div className="modal-footer" style={{ justifyContent: 'center' }}>
+            <div className="modal-footer" style={{ justifyContent: 'center', marginTop: '20px', display: 'flex', gap: '10px' }}>
               <button className="btn btn-secondary" onClick={closeModal}>Batal</button>
               <button className="btn btn-danger" onClick={handleHapus}>Ya, Hapus</button>
             </div>

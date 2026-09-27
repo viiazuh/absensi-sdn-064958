@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { MdFilterList, MdEdit, MdSearch } from 'react-icons/md';
-import { mockKehadiran, mockGuru, formatTanggalShort, getInitials } from '../../data/mockData';
+import { useState, useEffect } from 'react';
+import { MdFilterList, MdSearch } from 'react-icons/md';
+import { formatTanggalShort, getInitials } from '../../data/mockData';
+import { db } from '../../firebase';
+import { collection, getDocs, updateDoc, doc, query, where, orderBy } from 'firebase/firestore';
 
 const statusBadge = (status) => {
   const map = { Hadir: 'hadir', Sakit: 'sakit', Izin: 'izin', Alpha: 'alpha' };
@@ -8,28 +10,74 @@ const statusBadge = (status) => {
 };
 
 export default function DataKehadiran() {
-  const [tanggal, setTanggal] = useState('2024-09-23');
+  // Mendapatkan tanggal hari ini format YYYY-MM-DD sebagai default filter
+  const getTodayDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [tanggal, setTanggal] = useState(getTodayDateString());
   const [search, setSearch] = useState('');
-  const [kehadiran, setKehadiran] = useState(mockKehadiran);
+  const [kehadiranList, setKehadiranList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
 
-  const filtered = kehadiran
+  // Ambil data kehadiran dari Firestore
+  const fetchKehadiran = async () => {
+    try {
+      setLoading(true);
+      let q = collection(db, 'kehadiran');
+
+      // Jika tanggal dipilih, filter langsung dari query Firestore (opsional atau filter client-side)
+      const querySnapshot = await getDocs(q);
+      const data = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setKehadiranList(data);
+    } catch (error) {
+      console.error("Gagal mengambil data kehadiran:", error);
+      showToast('Gagal memuat data kehadiran');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchKehadiran();
+  }, []);
+
+  const filtered = kehadiranList
     .filter(k => !tanggal || k.tanggal === tanggal)
     .filter(k =>
-      !search || k.guru_nama.toLowerCase().includes(search.toLowerCase())
+      !search || (k.guru_nama?.toLowerCase() || '').includes(search.toLowerCase())
     );
 
-  // Stats
+  // Stats berdasarkan data yang ter-filter
   const hadir = filtered.filter(k => k.status === 'Hadir').length;
   const sakit = filtered.filter(k => k.status === 'Sakit').length;
   const izin = filtered.filter(k => k.status === 'Izin').length;
   const alpha = filtered.filter(k => k.status === 'Alpha').length;
 
-  const handleStatusChange = (id, newStatus) => {
-    setKehadiran(prev => prev.map(k => k.id === id ? { ...k, status: newStatus } : k));
-    showToast('Status kehadiran diperbarui ✅');
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      const docRef = doc(db, 'kehadiran', id);
+      await updateDoc(docRef, { status: newStatus });
+
+      setKehadiranList(prev => prev.map(k => k.id === id ? { ...k, status: newStatus } : k));
+      showToast('Status kehadiran diperbarui ✅');
+    } catch (error) {
+      console.error("Gagal memperbarui status:", error);
+      showToast('Gagal memperbarui status ke database');
+    }
   };
 
   return (
@@ -98,12 +146,14 @@ export default function DataKehadiran() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '20px' }}>Memuat data kehadiran...</td></tr>
+              ) : filtered.length === 0 ? (
                 <tr><td colSpan={8}>
                   <div className="empty-state">
                     <div className="empty-state-icon">📋</div>
                     <h4>Tidak ada data</h4>
-                    <p>Pilih tanggal yang berbeda</p>
+                    <p>Pilih tanggal atau kata kunci yang berbeda</p>
                   </div>
                 </td></tr>
               ) : filtered.map((k, i) => (
@@ -111,13 +161,13 @@ export default function DataKehadiran() {
                   <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
                   <td>
                     <div className="guru-cell">
-                      <div className="guru-avatar-sm">{getInitials(k.guru_nama)}</div>
+                      <div className="guru-avatar-sm">{getInitials(k.guru_nama || 'Guru')}</div>
                       <div className="guru-cell-info"><h5>{k.guru_nama}</h5></div>
                     </div>
                   </td>
-                  <td style={{ fontSize: '0.8rem' }}>{formatTanggalShort(k.tanggal)}</td>
-                  <td style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{k.jam_masuk || '—'}</td>
-                  <td style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{k.jam_keluar || '—'}</td>
+                  <td style={{ fontSize: '0.8rem' }}>{k.tanggal ? formatTanggalShort(k.tanggal) : '—'}</td>
+                  <td style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{k.jam_masuk || '—'}</td>
+                  <td style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{k.jam_keluar || '—'}</td>
                   <td>{statusBadge(k.status)}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{k.keterangan || '—'}</td>
                   <td>

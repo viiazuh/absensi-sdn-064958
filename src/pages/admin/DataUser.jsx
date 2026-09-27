@@ -1,20 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MdAdd, MdEdit, MdDelete, MdSearch, MdClose, MdKey } from 'react-icons/md';
-import { mockUsers, getInitials } from '../../data/mockData';
+import { getInitials } from '../../data/mockData';
+import { db, auth } from '../../firebase';
+import {
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc
+} from 'firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 const emptyForm = { nama: '', email: '', role: 'guru', status: 'Aktif', password: '' };
 
 export default function DataUser() {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // Ambil data user dari Firestore saat komponen dimuat
+  const fetchUsers = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'users'));
+      const listUser = querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
+      setUsers(listUser);
+    } catch (error) {
+      console.error("Gagal mengambil data user:", error);
+      showToast("Gagal memuat data dari database", "error");
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   const filtered = users.filter(u =>
-    u.nama.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
+    (u.nama || '').toLowerCase().includes(search.toLowerCase()) ||
+    (u.email || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const showToast = (msg, type = 'success') => {
@@ -27,22 +52,68 @@ export default function DataUser() {
   const openHapus = (u) => { setSelected(u); setModal('hapus'); };
   const closeModal = () => { setModal(null); setSelected(null); };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nama || !form.email) return;
-    if (modal === 'tambah') {
-      setUsers(prev => [...prev, { ...form, id: 'u' + Date.now(), createdAt: new Date().toISOString().slice(0, 10) }]);
-      showToast('User berhasil ditambahkan');
-    } else {
-      setUsers(prev => prev.map(u => u.id === selected.id ? { ...u, ...form } : u));
-      showToast('Data user berhasil diperbarui');
+    setLoading(true);
+
+    try {
+      if (modal === 'tambah') {
+        if (!form.password || form.password.length < 6) {
+          alert('Password wajib diisi minimal 6 karakter untuk pembuatan akun baru.');
+          setLoading(false);
+          return;
+        }
+
+        // 1. Buat akun di Firebase Authentication
+        const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
+        const uid = userCredential.user.uid;
+
+        // 2. Simpan profil lengkap ke Firestore collection 'users' menggunakan UID asli
+        const newUserData = {
+          nama: form.nama,
+          email: form.email,
+          role: form.role,
+          status: form.status,
+          createdAt: new Date().toISOString().slice(0, 10)
+        };
+
+        await setDoc(doc(db, 'users', uid), newUserData);
+        showToast('User dan akun Auth berhasil ditambahkan');
+
+      } else {
+        // Edit data user di Firestore
+        const userDocRef = doc(db, 'users', selected.id);
+        const updateData = {
+          nama: form.nama,
+          role: form.role,
+          status: form.status,
+        };
+
+        await updateDoc(userDocRef, updateData);
+        showToast('Data user berhasil diperbarui');
+      }
+
+      closeModal();
+      fetchUsers(); // Refresh data tabel
+    } catch (error) {
+      console.error("Error saving user:", error);
+      showToast('Gagal: ' + error.message, 'error');
+    } finally {
+      setLoading(false);
     }
-    closeModal();
   };
 
-  const handleHapus = () => {
-    setUsers(prev => prev.filter(u => u.id !== selected.id));
-    showToast('User berhasil dihapus', 'error');
-    closeModal();
+  const handleHapus = async () => {
+    try {
+      // Hapus dokumen dari Firestore berdasarkan ID (UID)
+      await deleteDoc(doc(db, 'users', selected.id));
+      showToast('User berhasil dihapus', 'error');
+      closeModal();
+      fetchUsers();
+    } catch (error) {
+      console.error("Gagal menghapus:", error);
+      showToast('Gagal menghapus data', 'error');
+    }
   };
 
   return (
@@ -50,7 +121,7 @@ export default function DataUser() {
       <div className="page-header">
         <div className="page-header-left">
           <h2>👤 Data User</h2>
-          <p>{users.length} akun pengguna terdaftar</p>
+          <p>{users.length} akun pengguna terdaftar di Database</p>
         </div>
         <button className="btn btn-primary" onClick={openTambah} id="btn-tambah-user">
           <MdAdd /> Tambah User
@@ -96,10 +167,10 @@ export default function DataUser() {
                     <div className="guru-cell">
                       <div className="guru-avatar-sm" style={{
                         background: u.role === 'admin'
-                          ? 'linear-gradient(135deg, #4F8EF7, #A78BFA)'
-                          : 'var(--gradient-main)'
+                          ? 'linear-gradient(135deg, #4F8EF7)'
+                          : '#DBEAFE'
                       }}>
-                        {getInitials(u.nama)}
+                        {getInitials(u.nama || 'User')}
                       </div>
                       <div className="guru-cell-info">
                         <h5>{u.nama}</h5>
@@ -109,15 +180,15 @@ export default function DataUser() {
                   <td style={{ fontSize: '0.82rem' }}>{u.email}</td>
                   <td>
                     <span className={`badge ${u.role === 'admin' ? 'admin-role' : 'guru-role'}`}>
-                      {u.role === 'admin' ? '⚡ Admin' : '👨‍🏫 Guru'}
+                      {u.role === 'admin' ? 'Admin' : 'Guru'}
                     </span>
                   </td>
                   <td>
                     <span className={`badge ${u.status === 'Aktif' ? 'aktif' : 'nonaktif'}`}>
-                      {u.status}
+                      {u.status || 'Aktif'}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{u.createdAt}</td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{u.createdAt || '-'}</td>
                   <td>
                     <div className="action-group">
                       <button className="btn btn-secondary btn-sm" onClick={() => openEdit(u)} title="Edit">
@@ -145,7 +216,7 @@ export default function DataUser() {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{modal === 'tambah' ? '➕ Tambah User' : '✏️ Edit User'}</h3>
+              <h3>{modal === 'tambah' ? '➕ Tambah User' : 'Edit User'}</h3>
               <button className="modal-close" onClick={closeModal}><MdClose /></button>
             </div>
 
@@ -158,6 +229,7 @@ export default function DataUser() {
               <div className="form-group">
                 <label className="form-label">Email *</label>
                 <input className="form-control" type="email" placeholder="email@sdn.id" value={form.email}
+                  disabled={modal === 'edit'}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
               </div>
 
@@ -180,24 +252,26 @@ export default function DataUser() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">
-                  <MdKey style={{ verticalAlign: 'middle' }} /> {modal === 'tambah' ? 'Password *' : 'Password Baru (kosongkan jika tidak diganti)'}
-                </label>
-                <input
-                  className="form-control"
-                  type="password"
-                  placeholder={modal === 'tambah' ? 'Min. 8 karakter' : '••••••••'}
-                  value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                />
-              </div>
+              {modal === 'tambah' && (
+                <div className="form-group">
+                  <label className="form-label">
+                    <MdKey style={{ verticalAlign: 'middle' }} /> Password *
+                  </label>
+                  <input
+                    className="form-control"
+                    type="password"
+                    placeholder="Min. 6 karakter"
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={closeModal}>Batal</button>
-              <button className="btn btn-primary" onClick={handleSave}>
-                {modal === 'tambah' ? 'Simpan' : 'Perbarui'}
+              <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+                {loading ? 'Menyimpan...' : (modal === 'tambah' ? 'Simpan' : 'Perbarui')}
               </button>
             </div>
           </div>
