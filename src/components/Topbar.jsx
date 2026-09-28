@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatTanggal, getTodayString } from '../data/mockData';
+import { MdMenu } from 'react-icons/md';
 
 const titleMap = {
   '/admin/dashboard': { title: 'Dashboard', desc: 'Ringkasan data kehadiran hari ini' },
@@ -15,22 +16,52 @@ const titleMap = {
   '/guru/laporan': { title: 'Laporan Kehadiran', desc: 'Rekap kehadiran saya' },
 };
 
-export default function Topbar() {
+export default function Topbar({ onToggle }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const info = titleMap[pathname] || { title: 'Halaman', desc: '' };
 
   return (
-    <header className="topbar">
-      <div className="topbar-left">
-        <h3>{info.title}</h3>
-        <p>{info.desc}</p>
+    <header className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="topbar-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Tombol Hamburger khusus mobile/tablet di dalam topbar */}
+        <button
+          onClick={onToggle}
+          aria-label="Toggle Menu"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            fontSize: '1.5rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            color: 'inherit',
+            padding: '4px',
+          }}
+          className="mobile-hamburger-btn"
+        >
+          <MdMenu />
+        </button>
+
+        <div>
+          <h3>{info.title}</h3>
+          <p>{info.desc}</p>
+        </div>
       </div>
+
       <div className="topbar-right">
         <span className="topbar-date">
-            {formatTanggal(getTodayString())}
+          {formatTanggal(getTodayString())}
         </span>
       </div>
+
+      <style>{`
+        @media (min-width: 769px) {
+          .mobile-hamburger-btn {
+            display: none !important;
+          }
+        }
+      `}</style>
     </header>
   );
 }
