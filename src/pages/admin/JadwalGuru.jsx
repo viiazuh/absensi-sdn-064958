@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MdAdd, MdEdit, MdDelete, MdClose } from 'react-icons/md';
 import { HARI_COLORS } from '../../data/mockData';
 import { db } from '../../firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 
 const emptyForm = { guru_id: '', mata_pelajaran: '', kelas: '', hari: 'Senin', jam_mulai: '07:30', jam_selesai: '08:30' };
 const HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -22,24 +22,23 @@ export default function JadwalGuru() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Ambil data Guru dan Jadwal dari Firestore
+  // Ambil data Guru dari koleksi 'users' (yang rolenya 'guru') dan data Jadwal dari Firestore
   const fetchData = async () => {
     try {
       setLoading(true);
 
-      // 1. Ambil data guru untuk dropdown pilihan guru
-      const guruSnapshot = await getDocs(collection(db, 'guru'));
-      const guruData = guruSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setGuruList(guruData);
+      // 1. Ambil data guru langsung dari koleksi 'users' berdasarkan role 'guru'
+      const userSnapshot = await getDocs(collection(db, 'users'));
+      const listGuru = userSnapshot.docs
+        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+        .filter(u => u.role === 'guru'); // Filter hanya yang rolenya guru
+      setGuruList(listGuru);
 
       // 2. Ambil data jadwal
       const jadwalSnapshot = await getDocs(query(collection(db, 'jadwal'), orderBy('hari', 'asc')));
-      const jadwalData = jadwalSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const jadwalData = jadwalSnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
       }));
       setJadwal(jadwalData);
 
@@ -62,7 +61,7 @@ export default function JadwalGuru() {
   const openHapus = (j) => { setSelected(j); setModal('hapus'); };
   const closeModal = () => { setModal(null); setSelected(null); };
 
-  const getGuruNama = (id) => guruList.find(g => g.id === id)?.nama || '';
+  const getGuruNama = (id) => guruList.find(g => g.id === id)?.nama || 'Guru';
 
   const handleSave = async () => {
     if (!form.guru_id || !form.mata_pelajaran || !form.kelas) {
@@ -96,7 +95,7 @@ export default function JadwalGuru() {
         showToast('Jadwal berhasil diperbarui ✅');
       }
       closeModal();
-      fetchData(); // Sinkronisasi ulang data
+      fetchData();
     } catch (error) {
       console.error("Gagal menyimpan jadwal:", error);
       showToast('Gagal menyimpan ke database', 'error');
@@ -107,9 +106,10 @@ export default function JadwalGuru() {
     if (!selected) return;
 
     try {
+      // Hapus dokumen jadwal secara permanen langsung di Firestore database
       await deleteDoc(doc(db, 'jadwal', selected.id));
       setJadwal(prev => prev.filter(j => j.id !== selected.id));
-      showToast('Jadwal dihapus 🗑️', 'error');
+      showToast('Jadwal berhasil dihapus dari database 🗑️', 'error');
       closeModal();
     } catch (error) {
       console.error("Gagal menghapus jadwal:", error);
@@ -185,9 +185,7 @@ export default function JadwalGuru() {
                     <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{j.guru_nama}</td>
                     <td>{j.mata_pelajaran}</td>
-                    <td>
-                      {j.kelas}
-                    </td>
+                    <td>{j.kelas}</td>
                     <td>
                       <span
                         className="hari-badge"
@@ -215,13 +213,15 @@ export default function JadwalGuru() {
       {/* Modal Tambah/Edit */}
       {(modal === 'tambah' || modal === 'edit') && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '100%' }}>
             <div className="modal-header">
-              <h3>{modal === 'tambah' ? '➕ Tambah Jadwal' : '✏️ Edit Jadwal'}</h3>
+              <h3>{modal === 'tambah' ? '➕ Tambah Jadwal Guru' : '✏️ Edit Jadwal Guru'}</h3>
               <button className="modal-close" onClick={closeModal}><MdClose /></button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '10px' }}>
+
+              {/* Pilih Guru (Mengambil dari tabel users yang rolenya guru) */}
               <div className="form-group">
                 <label className="form-label">Guru *</label>
                 <select className="form-control" value={form.guru_id}
@@ -230,12 +230,14 @@ export default function JadwalGuru() {
                   {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
                 </select>
               </div>
-              <div className="form-grid">
+
+              {/* Mata Pelajaran & Kelas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="form-group">
                   <label className="form-label">Mata Pelajaran *</label>
                   <select className="form-control" value={form.mata_pelajaran}
                     onChange={e => setForm(f => ({ ...f, mata_pelajaran: e.target.value }))}>
-                    <option value="" disabled hidden>Pilih...</option>
+                    <option value="" disabled hidden>Pilih Pelajaran...</option>
                     {['Matematika', 'Bahasa Indonesia', 'IPA', 'IPS', 'PJOK', 'PAI', 'Bahasa Inggris', 'SBK', 'Guru Kelas'].map(m =>
                       <option key={m} value={m}>{m}</option>
                     )}
@@ -245,36 +247,43 @@ export default function JadwalGuru() {
                   <label className="form-label">Kelas *</label>
                   <select className="form-control" value={form.kelas}
                     onChange={e => setForm(f => ({ ...f, kelas: e.target.value }))}>
-                    <option value="" disabled hidden>Pilih...</option>
+                    <option value="" disabled hidden>Pilih Kelas...</option>
                     {['Kelas I', 'Kelas II', 'Kelas III', 'Kelas IV', 'Kelas V', 'Kelas VI'].map(k =>
                       <option key={k} value={k}>{k}</option>
                     )}
                   </select>
                 </div>
+              </div>
+
+              {/* Hari */}
+              <div className="form-group">
+                <label className="form-label">Hari *</label>
+                <select className="form-control" value={form.hari}
+                  onChange={e => setForm(f => ({ ...f, hari: e.target.value }))}>
+                  {HARI.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </div>
+
+              {/* Jam Mulai & Jam Selesai */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="form-group">
-                  <label className="form-label">Hari</label>
-                  <select className="form-control" value={form.hari}
-                    onChange={e => setForm(f => ({ ...f, hari: e.target.value }))}>
-                    {HARI.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Jam Mulai</label>
+                  <label className="form-label">Jam Mulai *</label>
                   <input type="time" className="form-control" value={form.jam_mulai}
                     onChange={e => setForm(f => ({ ...f, jam_mulai: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Jam Selesai</label>
+                  <label className="form-label">Jam Selesai *</label>
                   <input type="time" className="form-control" value={form.jam_selesai}
                     onChange={e => setForm(f => ({ ...f, jam_selesai: e.target.value }))} />
                 </div>
               </div>
+
             </div>
 
             <div className="modal-footer" style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button className="btn btn-secondary" onClick={closeModal}>Batal</button>
               <button className="btn btn-primary" onClick={handleSave}>
-                {modal === 'tambah' ? 'Simpan' : 'Perbarui'}
+                {modal === 'tambah' ? 'Simpan Jadwal' : 'Perbarui Jadwal'}
               </button>
             </div>
           </div>
@@ -288,11 +297,11 @@ export default function JadwalGuru() {
             <div className="confirm-icon" style={{ fontSize: '2.5rem', color: 'var(--accent-red, red)', marginBottom: '10px' }}><MdDelete /></div>
             <h3 style={{ marginBottom: '8px' }}>Hapus Jadwal?</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '20px' }}>
-              Jadwal <strong>{selected?.mata_pelajaran}</strong> – {selected?.guru_nama}
+              Jadwal <strong>{selected?.mata_pelajaran}</strong> – {selected?.guru_nama} akan dihapus permanen dari database.
             </p>
             <div className="modal-footer" style={{ justifyContent: 'center', display: 'flex', gap: '10px' }}>
               <button className="btn btn-secondary" onClick={closeModal}>Batal</button>
-              <button className="btn btn-danger" onClick={handleHapus}>Hapus</button>
+              <button className="btn btn-danger" onClick={handleHapus}>Hapus Permanen</button>
             </div>
           </div>
         </div>

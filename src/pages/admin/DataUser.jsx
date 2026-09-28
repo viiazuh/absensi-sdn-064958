@@ -6,6 +6,7 @@ import {
   collection, getDocs, doc, setDoc, updateDoc, deleteDoc
 } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app'; // <-- TAMBAHAN UNTUK MENCEGAH PINDAH AKUN
 
 const emptyForm = { nama: '', email: '', role: 'guru', status: 'Aktif', password: '' };
 
@@ -64,11 +65,24 @@ export default function DataUser() {
           return;
         }
 
-        // 1. Buat akun di Firebase Authentication
-        const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
+        // --- SOLUSI AGAR TIDAK PINDAH AKUN ---
+        // Kita inisialisasi instance Auth sekunder khusus untuk mendaftarkan user baru
+        // tanpa merusak sesi Admin yang sedang aktif login di browser utama.
+        const secondaryApp = getApps().find(app => app.name === 'SecondaryApp')
+          || initializeApp(auth.app.options, 'SecondaryApp');
+
+        const { getAuth, createUserWithEmailAndPassword: createSecondaryAuth, signOut } = await import('firebase/auth');
+        const secondaryAuth = getAuth(secondaryApp);
+
+        // 1. Buat akun auth di background menggunakan auth sekunder
+        const userCredential = await createSecondaryAuth(secondaryAuth, form.email, form.password);
         const uid = userCredential.user.uid;
 
-        // 2. Simpan profil lengkap ke Firestore collection 'users' menggunakan UID asli
+        // Langsung logout auth sekunder agar tidak nyangkut
+        await signOut(secondaryAuth);
+        // -------------------------------------
+
+        // 2. Simpan profil lengkap ke Firestore koleksi 'users' menggunakan UID asli
         const newUserData = {
           nama: form.nama,
           email: form.email,
@@ -78,6 +92,17 @@ export default function DataUser() {
         };
 
         await setDoc(doc(db, 'users', uid), newUserData);
+
+        // 3. JIKA ROLE-NYA GURU, pastikan masuk juga ke data pendukung guru (jika aplikasi kamu butuh koleksi 'guru')
+        if (form.role === 'guru') {
+          await setDoc(doc(db, 'guru', uid), {
+            nama: form.nama,
+            email: form.email,
+            status: form.status,
+            user_id: uid
+          });
+        }
+
         showToast('User dan akun Auth berhasil ditambahkan');
 
       } else {
@@ -107,6 +132,10 @@ export default function DataUser() {
     try {
       // Hapus dokumen dari Firestore berdasarkan ID (UID)
       await deleteDoc(doc(db, 'users', selected.id));
+
+      // Hapus juga dari koleksi guru jika ada
+      try { await deleteDoc(doc(db, 'guru', selected.id)); } catch (e) { }
+
       showToast('User berhasil dihapus', 'error');
       closeModal();
       fetchUsers();

@@ -9,25 +9,24 @@ const BULAN = [
 ];
 
 export default function LaporanKehadiran() {
-  const [bulan, setBulan] = useState(8); // September (0-indexed)
-  const [tahun, setTahun] = useState(2024);
+  const [bulan, setBulan] = useState(new Date().getMonth()); // Bulan saat ini (0-indexed)
+  const [tahun, setTahun] = useState(new Date().getFullYear()); // Tahun saat ini (2026)
   const [guruList, setGuruList] = useState([]);
   const [kehadiranList, setKehadiranList] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Ambil data Guru dan Kehadiran dari Firestore
+  // Ambil data Guru dari koleksi 'users' (role 'guru') dan Kehadiran dari Firestore
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        // 1. Ambil daftar master guru
-        const guruSnapshot = await getDocs(collection(db, 'guru'));
-        const guruData = guruSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setGuruList(guruData);
+        // 1. Ambil daftar master guru dari koleksi 'users' (filter role 'guru')
+        const userSnapshot = await getDocs(collection(db, 'users'));
+        const listGuru = userSnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(u => u.role === 'guru');
+        setGuruList(listGuru);
 
         // 2. Ambil data kehadiran dari Firestore
         const kehadiranSnapshot = await getDocs(collection(db, 'kehadiran'));
@@ -52,17 +51,21 @@ export default function LaporanKehadiran() {
     return guruList.map(guru => {
       // Filter data kehadiran berdasarkan guru ini serta bulan dan tahun yang dipilih
       const filterPresensi = kehadiranList.filter(k => {
-        if (k.guru_id !== guru.id && k.guru_nama !== guru.nama) return false;
+        // Cocokkan berdasarkan guru_id atau nama guru
+        const matchGuru = (k.guru_id === guru.id) || (k.guru_nama === guru.nama);
+        if (!matchGuru) return false;
 
-        // Asumsi format tanggal tersimpan di k.tanggal (misal string "YYYY-MM-DD" atau objek Timestamp)
+        // Asumsi format tanggal tersimpan di k.tanggal (bisa string "YYYY-MM-DD", Timestamp, dll)
         let tanggalObj;
         if (k.tanggal?.toDate) {
           tanggalObj = k.tanggal.toDate();
-        } else if (typeof k.tanggal === 'string') {
+        } else if (typeof k.tanggal === 'string' || typeof k.tanggal === 'number') {
           tanggalObj = new Date(k.tanggal);
         } else {
           return false;
         }
+
+        if (isNaN(tanggalObj.getTime())) return false;
 
         return (
           tanggalObj.getMonth() === bulan &&
@@ -88,7 +91,7 @@ export default function LaporanKehadiran() {
 
       return {
         guru_nama: guru.nama || 'Tanpa Nama',
-        nip: guru.nip || '-',
+        nip: guru.nip || guru.email || '-',
         hadir,
         sakit,
         izin,
@@ -128,7 +131,7 @@ export default function LaporanKehadiran() {
           <div className="form-group" style={{ flex: '0 0 120px' }}>
             <label className="form-label">Tahun</label>
             <select className="form-control" value={tahun} onChange={e => setTahun(+e.target.value)}>
-              {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div style={{ paddingBottom: '2px' }}>
@@ -184,7 +187,7 @@ export default function LaporanKehadiran() {
               <tr>
                 <th>No</th>
                 <th>Nama Guru</th>
-                <th>NIP</th>
+                <th>NIP / Email</th>
                 <th style={{ textAlign: 'center', color: 'var(--accent-green)' }}>Hadir</th>
                 <th style={{ textAlign: 'center', color: 'var(--accent-orange)' }}>Sakit</th>
                 <th style={{ textAlign: 'center', color: 'var(--accent-purple)' }}>Izin</th>
@@ -200,7 +203,7 @@ export default function LaporanKehadiran() {
                 </tr>
               ) : laporanRekap.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '24px' }}>Tidak ada data guru yang tersedia.</td>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '24px' }}>Tidak ada data guru yang terdaftar di sistem.</td>
                 </tr>
               ) : (
                 laporanRekap.map((r, i) => {
@@ -256,7 +259,7 @@ export default function LaporanKehadiran() {
             <tfoot>
               <tr style={{ borderTop: '2px solid var(--border-subtle)', background: 'rgba(255,255,255,0.03)' }}>
                 <td colSpan={3} style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  TOTAL
+                  TOTAL KESELURUHAN
                 </td>
                 <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--accent-green)', padding: '12px 16px' }}>
                   {total_hadir}

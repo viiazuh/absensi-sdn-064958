@@ -1,179 +1,147 @@
 import { useState, useEffect } from 'react';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { useAuth } from '../../context/AuthContext';
+import { HARI_COLORS } from '../../data/mockData';
 
-// Warna default jika key hari tidak ditemukan
-const HARI_COLORS = {
-  'Senin': { bg: 'rgba(79,142,247,0.15)', color: '#4F8EF7' },
-  'Selasa': { bg: 'rgba(67,232,154,0.15)', color: '#43E89A' },
-  'Rabu': { bg: 'rgba(247,185,85,0.15)', color: '#F7B955' },
-  'Kamis': { bg: 'rgba(168,85,247,0.15)', color: '#A855F7' },
-  'Jumat': { bg: 'rgba(239,68,68,0.15)', color: '#EF4444' },
-  'Sabtu': { bg: 'rgba(56,189,248,0.15)', color: '#38BDF8' }
-};
+const HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
-export default function Jadwal() {
-  const { user } = useAuth();
-  const [jadwalList, setJadwalList] = useState([]);
+export default function JadwalGuruDashboard() {
+  const [jadwalSaya, setJadwalSaya] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterHari, setFilterHari] = useState('');
 
-  const guruId = user?.uid || user?.id;
+  // Ambil jadwal khusus untuk guru yang sedang login
+  const fetchJadwalGuru = async () => {
+    try {
+      setLoading(true);
+      const user = auth.currentUser;
+
+      if (!user) {
+        console.warn("Belum ada user yang login!");
+        setLoading(false);
+        return;
+      }
+
+      // Query ke koleksi 'jadwal' di mana guru_id sama dengan UID user yang login
+      const q = query(
+        collection(db, 'jadwal'),
+        where('guru_id', '==', user.uid)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const dataJadwal = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      setJadwalSaya(dataJadwal);
+    } catch (error) {
+      console.error("Gagal memuat jadwal guru:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchJadwal = async () => {
-      if (!guruId) return;
-
-      try {
-        setLoading(true);
-        // Ambil data jadwal dari koleksi 'jadwal' berdasarkan ID guru yang login
-        const q = query(collection(db, 'jadwal'), where('guru_id', '==', guruId));
-        const querySnapshot = await getDocs(q);
-
-        const data = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-
-        setJadwalList(data);
-      } catch (error) {
-        console.error("Gagal memuat data jadwal mengajar:", error);
-      } finally {
+    // Pastikan auth sudah siap atau gunakan onAuthStateChanged jika diperlukan
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchJadwalGuru();
+      } else {
         setLoading(false);
       }
-    };
+    });
 
-    fetchJadwal();
-  }, [guruId]);
+    return () => unsubscribe();
+  }, []);
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-        Memuat jadwal mengajar...
-      </div>
-    );
-  }
+  // Filter berdasarkan hari yang dipilih
+  const filteredJadwal = jadwalSaya.filter(j => !filterHari || j.hari === filterHari);
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="page-header-left">
-          <h2>📅 Jadwal Mengajar Saya</h2>
-          <p>{jadwalList.length} sesi terjadwal minggu ini</p>
+    <div style={{ padding: '20px' }}>
+      <div className="page-header" style={{ marginBottom: '20px' }}>
+        <h2>📚 Jadwal Mengajar Saya</h2>
+        <p>Daftar jadwal mengajar yang diberikan oleh Admin</p>
+      </div>
+
+      {/* Filter Hari */}
+      <div className="card" style={{ marginBottom: '16px', padding: '12px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Filter Hari:</span>
+          <button
+            className={`btn btn-sm ${filterHari === '' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setFilterHari('')}
+            style={{ padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            Semua
+          </button>
+          {HARI.map(h => (
+            <button
+              key={h}
+              className={`btn btn-sm ${filterHari === h ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setFilterHari(h)}
+              style={{ padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              {h}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Jadwal Grid per Hari */}
-      {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'].map(hari => {
-        const jadwalHari = jadwalList.filter(j => j.hari === hari);
-        if (jadwalHari.length === 0) return null;
-        const hc = HARI_COLORS[hari] || { bg: 'rgba(255,255,255,0.1)', color: '#fff' };
-
-        return (
-          <div key={hari} style={{ marginBottom: '16px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '6px 14px',
-              borderRadius: '99px',
-              background: hc.bg,
-              color: hc.color,
-              fontWeight: '700',
-              fontSize: '0.85rem',
-              marginBottom: '10px',
-            }}>
-              {hari}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {jadwalHari.map(j => (
-                <div key={j.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
-                  {/* Waktu */}
-                  <div style={{
-                    minWidth: '90px', textAlign: 'center',
-                    padding: '10px',
-                    background: hc.bg,
-                    borderRadius: 'var(--radius-sm)',
-                  }}>
-                    <p style={{ fontSize: '0.7rem', color: hc.color, fontWeight: '600' }}>{j.jam_mulai}</p>
-                    <p style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>↓</p>
-                    <p style={{ fontSize: '0.7rem', color: hc.color, fontWeight: '600' }}>{j.jam_selesai}</p>
-                  </div>
-                  {/* Info */}
-                  <div style={{ flex: 1 }}>
-                    <h4 style={{ marginBottom: '4px' }}>{j.mata_pelajaran}</h4>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {j.kelas}
-                    </p>
-                  </div>
-                  {/* Durasi */}
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{
-                      fontSize: '0.75rem',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border-subtle)',
-                      padding: '4px 10px',
-                      borderRadius: '99px',
-                      color: 'var(--text-muted)',
-                    }}>
-                      ⏱ 60 menit
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Tabel Jadwal */}
+      <div className="card" style={{ padding: '20px' }}>
+        {loading ? (
+          <p style={{ textAlign: 'center', padding: '20px' }}>Memuat jadwal kamu...</p>
+        ) : filteredJadwal.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '30px' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📭</div>
+            <h4>Belum ada jadwal</h4>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              Belum ada jadwal mengajar yang diatur oleh admin untukmu.
+            </p>
           </div>
-        );
-      })}
-
-      {jadwalList.length === 0 && (
-        <div className="empty-state">
-          <div className="empty-state-icon">📅</div>
-          <h4>Belum ada jadwal</h4>
-          <p>Hubungi admin untuk pengaturan jadwal</p>
-        </div>
-      )}
-
-      {/* Tabel Ringkas */}
-      {jadwalList.length > 0 && (
-        <div className="card" style={{ marginTop: '8px' }}>
-          <div className="section-header">
-            <h3>Ringkasan Jadwal Mingguan</h3>
-            <span className="section-header-badge">{jadwalList.length} total sesi</span>
-          </div>
-          <div className="table-container">
-            <table>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  <th>No</th>
-                  <th>Hari</th>
-                  <th>Mata Pelajaran</th>
-                  <th>Kelas</th>
-                  <th>Jam Mulai</th>
-                  <th>Jam Selesai</th>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left' }}>
+                  <th style={{ padding: '10px' }}>Hari</th>
+                  <th style={{ padding: '10px' }}>Mata Pelajaran</th>
+                  <th style={{ padding: '10px' }}>Kelas</th>
+                  <th style={{ padding: '10px' }}>Waktu</th>
                 </tr>
               </thead>
               <tbody>
-                {jadwalList.map((j, i) => {
-                  const hc = HARI_COLORS[j.hari] || { bg: 'rgba(255,255,255,0.1)', color: '#fff' };
+                {filteredJadwal.map(j => {
+                  const hc = HARI_COLORS?.[j.hari] || { bg: '#e2e8f0', color: '#1e293b' };
                   return (
-                    <tr key={j.id}>
-                      <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                      <td>
-                        <span className="hari-badge" style={{ background: hc.bg, color: hc.color, fontWeight: 700, padding: '3px 10px', borderRadius: '99px' }}>
+                    <tr key={j.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{
+                          background: hc.bg,
+                          color: hc.color,
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontWeight: 'bold',
+                          fontSize: '0.8rem'
+                        }}>
                           {j.hari}
                         </span>
                       </td>
-                      <td>{j.mata_pelajaran}</td>
-                      <td>{j.kelas}</td>
-                      <td style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{j.jam_mulai}</td>
-                      <td style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{j.jam_selesai}</td>
+                      <td style={{ padding: '10px', fontWeight: 'bold' }}>{j.mata_pelajaran}</td>
+                      <td style={{ padding: '10px' }}>{j.kelas}</td>
+                      <td style={{ padding: '10px', color: 'var(--accent-green, #10b981)', fontWeight: '600' }}>
+                        {j.jam_mulai} - {j.jam_selesai}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
