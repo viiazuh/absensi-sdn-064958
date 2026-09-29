@@ -6,3 +6,5 @@
 // dropdown data user > admin ganti staff {done}
 // ganti warna untuk profil {done}
 // *Pas cetak laporan persentase tidak terbaca {done}
+// fixed UI agar responsive 
+// atur jam untuk form izin dan sakit ?

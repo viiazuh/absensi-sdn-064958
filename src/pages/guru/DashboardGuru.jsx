@@ -105,7 +105,7 @@ export default function DashboardGuru() {
       </div>
 
       {/* Mini Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '20px' }}>
+      <div className='stats-grid'>
         <div className="stat-card green">
           <div className="stat-card-icon"><MdCheckCircle /></div>
           <div className="stat-card-info">

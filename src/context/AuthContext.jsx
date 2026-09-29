@@ -13,7 +13,6 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-
   const login = async (email, password) => {
     setLoading(true);
     try {
@@ -104,6 +103,18 @@ export function AuthProvider({ children }) {
 
     return () => unsubscribe();
   }, []);
+
+  // Tampilkan layar muat saat Firebase sedang mengecek sesi aktif agar tidak langsung redirect ke login saat refresh
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0f172a', color: '#fff', fontFamily: 'sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>⏳</div>
+          <p style={{ fontSize: '0.95rem', color: '#94a3b8' }}>Memuat sesi aplikasi...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>

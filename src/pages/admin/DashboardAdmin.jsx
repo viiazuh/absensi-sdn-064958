@@ -11,6 +11,7 @@ const statusBadge = (status) => {
 
 export default function DashboardAdmin() {
   const [totalGuru, setTotalGuru] = useState(0);
+  const [guruList, setGuruList] = useState([]); // State untuk menampung data guru terbaru dari koleksi 'users'
   const [todayKehadiran, setTodayKehadiran] = useState([]);
   const [todayJadwal, setTodayJadwal] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,29 +33,29 @@ export default function DashboardAdmin() {
       try {
         setLoading(true);
 
-        // 1. Hitung Total Guru (user dengan role 'guru')
+        // 1. Ambil data guru terbaru dari koleksi 'users'
         const usersSnapshot = await getDocs(collection(db, 'users'));
-        const allUsers = usersSnapshot.docs.map(doc => doc.data());
-        const guruList = allUsers.filter(u => u.role === 'guru');
-        setTotalGuru(guruList.length);
+        const allUsers = usersSnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+        const listGuru = allUsers.filter(u => u.role === 'guru');
+        setGuruList(listGuru);
+        setTotalGuru(listGuru.length);
 
         // 2. Ambil Data Kehadiran hari ini dari Firestore
-        // (Pastikan Anda punya koleksi 'kehadiran' dengan field 'tanggal' berformat YYYY-MM-DD)
         const kehadiranRef = collection(db, 'kehadiran');
         const qKehadiran = query(kehadiranRef, where('tanggal', '==', todayStr));
         const kehadiranSnapshot = await getDocs(qKehadiran);
-        const kehadiranData = kehadiranSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+        const kehadiranData = kehadiranSnapshot.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
         }));
         setTodayKehadiran(kehadiranData);
 
         // 3. Ambil Data Jadwal Mengajar dari Firestore
         const jadwalRef = collection(db, 'jadwal');
         const jadwalSnapshot = await getDocs(jadwalRef);
-        const jadwalData = jadwalSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+        const jadwalData = jadwalSnapshot.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
         }));
         setTodayJadwal(jadwalData.slice(0, 4)); // Ambil beberapa data untuk preview
 
@@ -67,6 +68,14 @@ export default function DashboardAdmin() {
 
     fetchDashboardData();
   }, [todayStr]);
+
+  // Fungsi helper untuk mencari nama guru terbaru berdasarkan ID (bisa guru_id, user_id, atau uid)
+  const getGuruNama = (item) => {
+    const targetId = item.guru_id || item.user_id || item.uid;
+    const guru = guruList.find(g => g.id === targetId);
+    // Jika ketemu di users, pakai nama terbaru. Jika tidak, fallback ke nama lama di dokumen.
+    return guru?.nama || item.guru_nama || 'Guru';
+  };
 
   // Kalkulasi statistik dari data riil Firestore
   const hadirCount = todayKehadiran.filter(k => k.status === 'Hadir').length;
@@ -153,20 +162,23 @@ export default function DashboardAdmin() {
                     </td>
                   </tr>
                 ) : (
-                  todayKehadiran.map(k => (
-                    <tr key={k.id}>
-                      <td>
-                        <div className="guru-cell">
-                          <div className="guru-avatar-sm">{getInitials(k.guru_nama || 'Guru')}</div>
-                          <div className="guru-cell-info">
-                            <h5>{k.guru_nama}</h5>
+                  todayKehadiran.map(k => {
+                    const namaGuru = getGuruNama(k);
+                    return (
+                      <tr key={k.id}>
+                        <td>
+                          <div className="guru-cell">
+                            <div className="guru-avatar-sm">{getInitials(namaGuru)}</div>
+                            <div className="guru-cell-info">
+                              <h5>{namaGuru}</h5>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td style={{ fontSize: '0.78rem', color: 'var(--accent-green)' }}>{k.jam_masuk || '—'}</td>
-                      <td>{statusBadge(k.status)}</td>
-                    </tr>
-                  ))
+                        </td>
+                        <td style={{ fontSize: '0.78rem', color: 'var(--accent-green)' }}>{k.jam_masuk || '—'}</td>
+                        <td>{statusBadge(k.status)}</td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -197,21 +209,24 @@ export default function DashboardAdmin() {
                     </td>
                   </tr>
                 ) : (
-                  todayJadwal.map((j, i) => (
-                    <tr key={j.id}>
-                      <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                      <td>
-                        <div className="guru-cell">
-                          <div className="guru-avatar-sm">{getInitials(j.guru_nama || 'Guru')}</div>
-                          <span style={{ fontSize: '0.82rem' }}>{j.guru_nama}</span>
-                        </div>
-                      </td>
-                      <td style={{ fontSize: '0.82rem' }}>{j.mata_pelajaran}</td>
-                      <td style={{ fontSize: '0.78rem', color: 'var(--accent-blue)' }}>
-                        {j.jam_mulai}–{j.jam_selesai}
-                      </td>
-                    </tr>
-                  ))
+                  todayJadwal.map((j, i) => {
+                    const namaGuru = getGuruNama(j);
+                    return (
+                      <tr key={j.id}>
+                        <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                        <td>
+                          <div className="guru-cell">
+                            <div className="guru-avatar-sm">{getInitials(namaGuru)}</div>
+                            <span style={{ fontSize: '0.82rem' }}>{namaGuru}</span>
+                          </div>
+                        </td>
+                        <td style={{ fontSize: '0.82rem' }}>{j.mata_pelajaran}</td>
+                        <td style={{ fontSize: '0.78rem', color: 'var(--accent-blue)' }}>
+                          {j.jam_mulai}–{j.jam_selesai}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

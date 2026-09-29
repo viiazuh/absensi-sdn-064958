@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MdAdd, MdEdit, MdDelete, MdClose } from 'react-icons/md';
 import { HARI_COLORS } from '../../data/mockData';
 import { db } from '../../firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 
 const emptyForm = { guru_id: '', mata_pelajaran: '', kelas: '', hari: 'Senin', jam_mulai: '07:30', jam_selesai: '08:30' };
 const HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -61,7 +61,11 @@ export default function JadwalGuru() {
   const openHapus = (j) => { setSelected(j); setModal('hapus'); };
   const closeModal = () => { setModal(null); setSelected(null); };
 
-  const getGuruNama = (id) => guruList.find(g => g.id === id)?.nama || 'Guru';
+  // Mencari nama guru secara real-time berdasarkan guru_id supaya sinkron dengan Data User
+  const getGuruNama = (id) => {
+    const guru = guruList.find(g => g.id === id);
+    return guru?.nama || 'Guru Tidak Ditemukan';
+  };
 
   const handleSave = async () => {
     if (!form.guru_id || !form.mata_pelajaran || !form.kelas) {
@@ -183,7 +187,8 @@ export default function JadwalGuru() {
                 return (
                   <tr key={j.id}>
                     <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{j.guru_nama}</td>
+                    {/* Menggunakan getGuruNama agar selalu sinkron dengan perubahan di Data User */}
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{getGuruNama(j.guru_id)}</td>
                     <td>{j.mata_pelajaran}</td>
                     <td>{j.kelas}</td>
                     <td>
@@ -297,7 +302,7 @@ export default function JadwalGuru() {
             <div className="confirm-icon" style={{ fontSize: '2.5rem', color: 'var(--accent-red, red)', marginBottom: '10px' }}><MdDelete /></div>
             <h3 style={{ marginBottom: '8px' }}>Hapus Jadwal?</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '20px' }}>
-              Jadwal <strong>{selected?.mata_pelajaran}</strong> – {selected?.guru_nama} akan dihapus permanen dari database.
+              Jadwal <strong>{selected?.mata_pelajaran}</strong> – {getGuruNama(selected?.guru_id)} akan dihapus permanen dari database.
             </p>
             <div className="modal-footer" style={{ justifyContent: 'center', display: 'flex', gap: '10px' }}>
               <button className="btn btn-secondary" onClick={closeModal}>Batal</button>

@@ -106,7 +106,7 @@ export default function DataKehadiran() {
       </div>
 
       {/* Mini Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+      <div className='stats-grid'>
         {[
           { label: 'Hadir', val: hadir, color: 'green' },
           { label: 'Sakit', val: sakit, color: 'orange' },
